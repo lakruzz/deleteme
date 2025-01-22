@@ -1,0 +1,73 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Set Unittest Status
+
+# Controls when the workflow will run
+on:
+  push:
+    branches: [ "*" ]
+  workflow_dispatch:
+    inputs:
+      bypass:
+        type: choice
+        description: Bypass Unittests
+        required: true
+        default: 'No'
+        options: 
+        - 'No'
+        - 'Yes'
+         
+
+jobs:
+  pre_deliver:
+    runs-on: ubuntu-latest
+
+    permissions:
+      statuses: write
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run unittests
+        id: unittests
+        run: |
+          if [ "${{ github.event.inputs.bypass }}" == "Yes" ]; then
+            echo '>[!WARNING]' >> $GITHUB_STEP_SUMMARY
+            echo '>Bypassing unittests' >> $GITHUB_STEP_SUMMARY
+            echo '>Forcing unittests status = `success`' >> $GITHUB_STEP_SUMMARY            
+          else
+            ls -la
+          fi
+
+      - name: Set status
+        id: set_status
+        run: |
+          if [ "${{ github.event.inputs.bypass }}" == "Yes" ]; then
+            echo "Bypass is set to Yes"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            if [ "${{ steps.unittests.outcome }}" == "success" ]; then
+              echo "Tests passed"
+            echo "status=success" >> $GITHUB_OUTPUT
+            else
+              echo "Tests failed"
+            echo "status=failed" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Set commit status
+        id: commit_status
+        run: |
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/statuses/${{ github.sha }} \
+            -f "state=${{ steps.set_status.outputs.status }}" \
+            -f "target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f "description=Unittest status:${{ steps.set_status.outputs.status }}" \
+            -f "context=Unittest"
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
